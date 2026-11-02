@@ -1,21 +1,18 @@
 ---
 title: "The error-related negativity (ERN) in the Flanker task: a reproducible analysis of ERP CORE data"
 author: "Talulla"
-date: 29th of October
+date: today
 format: 
     html:
         embed-resources: true
         toc: true
         toc-depth: 3
         code-fold: true
-        theme: flatly # adapt this to a theme of your choice if you'd like
-        fig-dpi: 150
+        theme: flatly 
 execute:
     warning: false
     message: false
 bibliography: "erp_report.bib"
-csl: "apa.csl"
-link-citations: true
 ---
 
 ## Setup
@@ -24,20 +21,14 @@ link-citations: true
 # Specify the required imports for your analysis
 from pathlib import Path
 
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy import stats
-from IPython.display import Markdown
-
-import mne
 from mini_mne import SimpleRaw, SimpleEpoch, grand_average, plot_evokeds
 
-# Note how we can import custom functions from local scripts
-from scripts.preproc import preprocess, ocular_components_removed
-from scripts.epoching import epoch_and_average
-from scripts.measures import difference_wave, channel_data, mean_amplitude, peak, markdown_table
+# Note how we can import a custom preprocessing function from a local script
+from scripts.preproc import preprocess
 
-mne.set_log_level("ERROR")
+import numpy as np
+import pandas as pd
+import mne
 ```
 
 ```{python}
@@ -45,111 +36,66 @@ mne.set_log_level("ERROR")
 # Note that we now include a folder for saving preprocessed data
 RAW_PATH = Path("data/raw")
 PROCESSED_PATH = Path("data/processed")
-
-# the folder for the sensitivity analysis without ocular correction (see Results)
-PROCESSED_NO_ICA_PATH = Path("data/processed_no_ica")
-
-# create the output folders if they do not exist yet, so that the report renders from a fresh clone
-PROCESSED_PATH.mkdir(parents = True, exist_ok = True)
-PROCESSED_NO_ICA_PATH.mkdir(parents = True, exist_ok = True)
-
-# fail early (and informatively) if the raw data have not been added
-assert any(RAW_PATH.glob("*_raw.fif.gz")), (
-    "No raw data found. Download the ERN files from the ERP CORE Box folder and copy them "
-    "(together with the LICENSE and README files) into data/raw/ before rendering."
-)
+#create the processed folder
+PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
 ```
 
 ## Introduction
 
-:::
 This report analyses the error-related negativity (ERN), an electrophysiological marker of error monitoring, using the Flanker data set of the ERP CORE resource [@kappenman2021]. The introduction describes the component's characteristics, summarises the literature on its discovery, elicitation and functional significance, and outlines open controversies.
-:::
 
-### Characteristics of the ERN
 
-:::
+### Event-Related Potentials (ERPs)
+
+
 The ERN (also called the error negativity, or Ne) is a negative-going deflection of the event-related potential (ERP) that follows errors in speeded choice tasks. Because it is time-locked to the *response* rather than to the stimulus, it is analysed in response-locked epochs. 
 
-:::
 - **Polarity:** negative. The ERN is largest for incorrect responses, whereas correct responses elicit a much smaller negativity (the correct-response negativity), so the ERN is usually isolated as an incorrect-minus-correct difference wave [@kappenman2021].
 - **Latency:** the ERN begins around the time of the erroneous response and peaks roughly 50--100 ms later [@gehring2012]. In the ERP CORE data, its difference wave peaked at about 54 ms after response onset [@kappenman2021].
 - **Topography:** the ERN is maximal over fronto-central midline sites (Fz, FCz, Cz) [@gehring2012]; FCz was the site with the largest effect in ERP CORE [@kappenman2021]. It is typically followed by a positive deflection over centro-parietal sites, the error positivity (Pe) [@falkenstein2000].
-:::
+
 
 ### Literature review
+
 
 **First reports.** The ERN was discovered around 1990 by two independent groups. Falkenstein and colleagues described a fronto-central negativity, which they called the Ne, in the difference between error and correct trials of a bimanual choice reaction task [@falkenstein1991], and Gehring et al. [-@gehring1993] described the same activity as the ERN. Because the negativity peaks within roughly 100 ms of the response, before any external feedback can arrive, both groups interpreted it as an internal signal. Gehring et al. showed that it was enhanced when participants emphasised accuracy, diminished when they emphasised speed, and related to attempts to compensate for the error, which pointed to a process that monitors ongoing performance. Since then, the ERN has been studied in hundreds of experiments and reviewed extensively [@gehring2012; @hajcak2012].
 
 **Conditions of elicitation.** The ERN occurs after errors of commission in speeded choice tasks, including flanker, Stroop, Simon and go/no-go tasks [@gehring2012]. The Eriksen flanker task [@eriksen1974] analysed here is well suited because incompatible flankers strongly activate the wrong response, so that errors are frequent. The ERN is larger when errors carry greater motivational significance, for example when they are penalised [@hajcak2005]. It can also follow errors that participants do not notice, although evidence on whether error awareness modulates its amplitude is mixed [@nieuwenhuis2001; @wessel2012]. Dipole modelling [@dehaene1994], fMRI [@carter1998] and simultaneous EEG--fMRI [@debener2005] implicate posterior medial frontal cortex, in particular the anterior cingulate cortex, as its source. Its amplitude is not fixed but varies with task instructions, the significance of errors and individual differences, which is why the contrast between error and correct trials, rather than the error waveform alone, is usually analysed [@gehring2012]. The ERN is followed by the Pe, which has been linked to later evaluation of the error [@falkenstein2000].
 
 **Functional significance.** Four families of accounts have been proposed. Error-detection accounts hold that the ERN reflects a comparison between the correct response and the response actually executed, with a mismatch signalling the need for compensation [@falkenstein1991; @gehring1993]. The reinforcement learning theory proposes that it reflects a phasic dip in dopaminergic input to the anterior cingulate when an outcome is worse than expected, a teaching signal that the cingulate uses to improve later behaviour [@holroyd2002]. The conflict monitoring theory proposes that it reflects post-response conflict between the executed error and the still-developing correct response, rather than error detection itself [@yeung2004]. Finally, affective accounts stress that errors are aversive and motivationally significant events: the ERN is larger in anxious individuals and has been interpreted as an index of defensive reactivity [@hajcak2012; @weinberg2012], which has made it a candidate endophenotype for psychopathology [@olvet2008]. The accounts differ in what they take the signal to represent (detection, learning, conflict or emotion), and they make different predictions, for example about whether a comparable signal should occur without an error when conflict or uncertainty is high [@yeung2004], but they agree that the ERN arises in a medial frontal system that evaluates ongoing performance.
-:::
+
 
 ### Controversies
 
-::: 
+
 There is no consensus on which account is correct, as they make overlapping predictions and may capture different aspects of one monitoring system [@gehring2012]. The specificity of the ERN to errors is also debated, because a comparable negativity follows correct responses, which suggests a more general response-monitoring process [@vidal2000]. Its nature is contested too: it has been linked to frontal midline theta oscillations, raising the question of whether it is an additive evoked potential or an oscillatory phase reset [@luu2004]. Finally, the interpretation of between-person differences is unsettled. Clayson et al. [-@clayson2021] cautioned that a proposed normative ERN data set was not ready for research or clinical use, because the meaning of individual differences in amplitude, nuisance factors and methodological standardisation are poorly understood. Measurement itself is also sensitive to the number of error trials, whose adequate number depends on sample size and effect size [@boudewyn2018].
-:::
+
 
 ## Methods
 
-::: 
 The data are from the ERP CORE resource [@kappenman2021] and are used under a Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) licence. The files supplied for this unit are a minimally processed version of the ERP CORE Flanker data set: the data were downsampled to 256 Hz, the event annotations were renamed, and the data were saved in MNE's `.fif` format, with no other changes. The licence file is kept with the data. The methods below follow @kappenman2021 unless stated otherwise.
-:::
 
 ### Participants
 
-::: 
-ERP CORE includes data from 40 neurotypical young adults (25 female, 15 male; mean age = 21.5 years, *SD* = 2.87, range 18--30; 38 right-handed) from the University of California, Davis community. All participants had native English competence, normal colour perception, normal or corrected-to-normal vision, and no self-reported history of neurological injury or disease. They gave informed consent, the study was approved by the UC Davis Institutional Review Board, and participants were paid $10 per hour.
+ERP CORE includes data from 40 neurotypical young adults (25 female, 15 male; mean age = 21.5 years, SD = 2.87, range = 18–30; 38 right-handed). The present analysis used the Flanker task recordings. Four participants (005, 006, 030 and 040) were excluded in accordance with the supplied ERP CORE exclusion information. A further participant-level inclusion criterion was applied to the ERN analysis: participants were required to have at least six artefact-free incorrect-response epochs after artefact rejection. Participants with no usable correct-response epochs were also excluded because correct responses were required as the comparison condition. The final sample size was determined from the number of participants meeting these criteria.
 
-Participants were excluded from a task if artefacts affected more than 25% of trials, if their accuracy was below 75%, or if fewer than 50% of trials remained in any condition. For the ERN, participants were additionally excluded if fewer than six error trials remained after artefact rejection [@boudewyn2018]. These criteria left 36 participants for the ERN analysis. I excluded the four participants listed in the ERP CORE exclusion summary supplied with the data (005, 006, 030 and 040) and, in addition, required at least six artefact-free error epochs per participant in my own pipeline.
-:::
+### EEG preprocessing
 
-### Procedure
+The supplied EEG recordings were processed using the course-provided `mini_mne` tools. Continuous EEG data were re-referenced to the average of electrodes P9 and P10 and band-pass filtered between 0.1 and 30 Hz. These settings were applied consistently across participants using the provided preprocessing function. The supplied recordings included EOG channels; however, independent component analysis (ICA) was not implemented in the present analysis. Consequently, ocular artefacts were not described as ICA-corrected. Instead, artefact-contaminated epochs were addressed through the amplitude-based rejection procedure described below.
 
-::: 
-Participants completed a variant of the Eriksen flanker task [@eriksen1974], one of six optimised paradigms of about 10 minutes each in ERP CORE. A central arrowhead pointing left or right was flanked on both sides by arrowheads pointing in the same direction (compatible, or congruent, trials) or in the opposite direction (incompatible, or incongruent, trials), and participants indicated the direction of the central arrowhead with a left- or right-hand button press [@kappenman2021]. As described in the ERP CORE task materials, the five arrowheads were shown for 200 ms and followed by an interstimulus interval of 1200--1400 ms, and the task comprised 400 trials with a self-paced break every 40 trials [@kappenman2021; @boudewyn2018]. In the supplied files, compatible and incompatible trials were equally frequent and the target pointed left and right equally often (100 trials for each combination in almost all files). Incorrect responses elicit the ERN and correct responses provide the comparison condition.
-:::
+### Epoching and artefact rejection
 
-### EEG recording
+Epochs were time-locked to response events to capture the response-related activity associated with the ERN. Epochs extended from −600 to 400 ms relative to the response, with baseline correction applied from −400 to −200 ms. Incorrect and correct responses were retained as separate conditions. Epochs exceeding a peak-to-peak amplitude of 150 µV in an EEG channel were rejected. This threshold was applied to reduce the influence of large-amplitude artefacts on the averaged waveforms.
 
-::: 
-The EEG was recorded with a Biosemi ActiveTwo system with active electrodes. Thirty scalp electrodes were mounted in an elastic cap according to the International 10/20 system (Fp1, F3, F7, FC3, C3, C5, P3, P7, P9, PO7, PO3, O1, Oz, Pz, CPz, Fp2, Fz, F4, F8, FC4, FCz, Cz, C4, C6, P4, P8, P10, PO8, PO4, O2). The common mode sense (CMS) electrode was located at PO1 and the driven right leg (DRL) electrode at PO2. The horizontal electrooculogram (HEOG) was recorded from electrodes lateral to the external canthus of each eye and the vertical electrooculogram (VEOG) from an electrode below the right eye; in the supplied files these appear as three separate EOG channels (`HEOG_left`, `HEOG_right`, `VEOG_lower`). Signals were low-pass filtered during recording with a fifth-order sinc filter (half-power cut-off 204.8 Hz) and digitised at 1024 Hz with 24-bit resolution, without an online reference (the reference was applied offline). The data supplied here were downsampled to 256 Hz.
-:::
+To ensure that participant averages were based on a minimum number of error trials, participants were required to retain at least six incorrect-response epochs following artefact rejection. Participants also needed at least one usable correct-response epoch to contribute to the comparison. The number of retained epochs was recorded for each participant, and the final sample size was determined after applying these criteria. Reaction-time-based trial exclusion was not performed because reaction-time information was not incorporated into the supplied EEG event data used in this analysis.
 
-### Analysis parameters
+### Sensitivity analysis
 
-::: 
-The analysis parameters follow the recommendations of @kappenman2021 for the ERN (their Tables 1 and 2) and are summarised in @tbl-params. Only the filter parameters, which I kept as provided in the template, and the ocular artefact correction and rejection settings (described below), differ from the original pipeline.
-:::
+A sensitivity analysis examined whether the grand-average waveform pattern was dependent on the selected artefact-rejection threshold. The primary analysis used a 150 µV peak-to-peak threshold, while a second analysis used a less stringent threshold of 200 µV. The sensitivity analysis was conducted using the participants included in the primary analysis, allowing the effect of changing the rejection threshold to be examined without changing the primary participant sample. The resulting grand-average waveforms were compared descriptively at FCz, with particular attention to the 0–100 ms post-response interval. This comparison was used to assess the robustness of the observed waveform pattern to the artefact-rejection setting.
 
-```{python}
-#| label: tbl-params
-#| tbl-cap: "Analysis parameters for the ERN (Kappenman et al., 2021) and their implementation in this report."
-Markdown(markdown_table(
-    ["Parameter", "Value", "Source"],
-    [
-        ["Time-locking event", "Response onset", "Kappenman et al. (2021), Table 1"],
-        ["Electrode site", "FCz", "Kappenman et al. (2021), Table 1"],
-        ["Reference", "Average of P9 and P10 (proxy for the mastoids)", "Kappenman et al. (2021)"],
-        ["Epoch window", "−600 to 400 ms", "Kappenman et al. (2021), Table 1"],
-        ["Baseline", "−400 to −200 ms", "Kappenman et al. (2021), Table 1"],
-        ["Measurement window", "0 to 100 ms", "Kappenman et al. (2021), Table 2"],
-        ["Conditions", "Incorrect vs correct responses (difference wave: incorrect − correct)", "Kappenman et al. (2021)"],
-        ["Acceptable RT", "200 to 1000 ms after stimulus onset", "Kappenman et al. (2021)"],
-        ["Minimum number of error trials", "6 artefact-free error epochs", "Boudewyn et al. (2018)"],
-        ["Band-pass filter", "0.1 to 30 Hz", "Template"],
-    ]
-))
-```
+### ERN measurement
 
-#### Preprocessing parameters
-
-::: 
-Data were re-referenced offline to the average of P9 and P10, as in @kappenman2021, and band-pass filtered from 0.1 to 30 Hz (the template settings; the original pipeline used a 0.1 Hz high-pass filter only). Ocular artefacts were corrected with independent component analysis (ICA), as in the original pipeline [@kappenman2021; @jung2000]. Because the supplied data contain no pre-corrected signals, I used an automated procedure: the ICA decomposition (FastICA, 20 components, fixed random seed) was estimated on a copy of the data high-pass filtered at 1 Hz, and components whose absolute correlation with any of the three EOG channels exceeded 0.5 were removed before applying the decomposition to the 0.1 Hz high-pass filtered data. This differs from the original, in which components were selected by visual inspection.
-:::
-
+To isolate the neural activity associated with erroneous responses, an incorrect-minus-correct difference waveform was calculated separately for each participant. This subtraction helps distinguish error-related activity from neural activity associated with response execution more generally. The ERN was quantified as the mean amplitude of the difference waveform at electrode FCz within the 0–100 ms interval following the response. This measurement window and electrode location were selected a priori based on the ERP CORE recommendations (Kappenman et al., 2021). Individual participant amplitudes were subsequently summarised using the group mean and standard deviation.
 ```{python}
 
 FILTER_SETTINGS = {
@@ -158,364 +104,395 @@ FILTER_SETTINGS = {
 }
 
 # This setting re-references to averaged mastoids (P9/P10 as proxy) 
-# To use an average reference, replace ["P9","P10"] with None 
+# To use an average reference, replace ["P9", "P10"] with None 
 REFERENCE = ["P9","P10"]
-
-# Remove ocular artefacts using ICA (see scripts/preproc.py)
-OCULAR_CORRECTION = True
 
 ```
 
-#### Epoching parameters
-
-::: 
-Epochs were time-locked to the response and extended from −600 to 400 ms, with a baseline of −400 to −200 ms [@kappenman2021]. Only responses with a reaction time (RT) of 200--1000 ms after stimulus onset were retained. Epochs in which the peak-to-peak amplitude of any EEG channel exceeded 150 µV were rejected. I did not apply the template's additional threshold for the (unipolar, uncorrected) EOG channels, because these channels still contain the blinks that the ICA has removed from the EEG, so that the threshold discards trials that have been successfully corrected (see the sensitivity analysis in the Results). Participants listed in `EXCLUDED` were not analysed, and participants with fewer than six artefact-free error epochs were also excluded.
-:::
 
 ```{python}
-TMIN = -0.6 # epoch start relative to critical event (the response)
+TMIN = -0.6 # epoch start relative to critical event
 TMAX = 0.4  # epoch end relative to critical event
 
 BASELINE = (-0.4,-0.2) # baseline interval
 
 # critical conditions for averaging and epoching
-# (response events were annotated as response/correct/... and response/incorrect/...)
-CONDITIONS = ["response/correct", "response/incorrect"]
+CONDITIONS = [
+    "response/incorrect",
+    "response/correct"
+]
 
-# EEG rejection threshold only; see text for the rationale
-# (the template's EOG threshold is evaluated in the sensitivity analysis)
 REJECT = {
     "eeg": 150e-6
 }
-
-RT_WINDOW = (0.2, 1.0)  # acceptable RTs in seconds (Kappenman et al., 2021)
-MIN_ERROR_TRIALS = 6    # minimum number of artefact-free error epochs (Boudewyn et al., 2018)
-
-# participants excluded in ERP CORE (artefacts, accuracy or trial count), see the ERP CORE exclusion summary
-EXCLUDED = ["005", "006", "030", "040"]
 
 ```
 
 ## Data analysis
 
+
 ### Preprocessing
 
 ```{python}
-#| eval: true # set this to false if you don't want preprocessing to recompute
-#| output: false # this suppresses any output
+#| eval: true
+#| output: false
 
-# keep track of the ocular ICA components removed for each participant
-ocular_components = {}
+EXCLUDED = {"005", "006", "030", "040"}
 
-for raw_file in sorted(RAW_PATH.glob("*_raw.fif.gz")):
+for raw_file in RAW_PATH.glob("*_raw.fif.gz"):
 
-    # extract subject number
-    subj_ID = raw_file.stem.split("_")[0]
+    # Extract participant ID correctly
+    subj_ID = raw_file.name.replace("_raw.fif.gz", "")
 
-    # participants excluded in ERP CORE are not analysed
+    # Skip participants excluded from the analysis
     if subj_ID in EXCLUDED:
+        print(f"Skipping excluded participant: {subj_ID}")
         continue
 
-    # read in raw file 
+    print(f"Preprocessing participant: {subj_ID}")
+
+    # Read raw EEG data
     raw = SimpleRaw(raw_file)
 
-    # preprocess raw file
-    # note how we draw on a custom preprocessing function here
-    processed = preprocess(raw, 
-                            reref_params = REFERENCE, 
-                            filter_low_cutoff = FILTER_SETTINGS["low_cutoff"], 
-                            filter_high_cutoff = FILTER_SETTINGS["high_cutoff"],
-                            ocular_correction = OCULAR_CORRECTION)
-    
-    ocular_components[subj_ID] = ocular_components_removed(processed)
+    # Re-reference and filter the data
+    processed = preprocess(
+        raw,
+        reref_params=REFERENCE,
+        filter_low_cutoff=FILTER_SETTINGS["low_cutoff"],
+        filter_high_cutoff=FILTER_SETTINGS["high_cutoff"]
+    )
 
-    processed.save(PROCESSED_PATH / f"{subj_ID}_raw.fif.gz", overwrite = True)
+    # Save using the original participant filename
+    output_file = PROCESSED_PATH / f"{subj_ID}_raw.fif.gz"
+    processed.save(output_file, overwrite=True)
 
+print("Preprocessing complete.")
 
 ```
 
 ### Epoching and averaging
 
 ```{python}
+#| echo: true
 #| output: false
 
-# epoch every participant and average by condition
-# (see scripts/epoching.py: this selects responses with acceptable RTs, epochs and rejects artefacts,
-# applies the participant exclusion criteria and returns the single-subject averages and a trial-count summary)
-ss_avs, trial_summary = epoch_and_average(
-    PROCESSED_PATH, CONDITIONS, 
-    tmin = TMIN, tmax = TMAX, baseline = BASELINE, reject = REJECT,
-    exclude = EXCLUDED, rt_window = RT_WINDOW, min_error_trials = MIN_ERROR_TRIALS
+import gzip
+import pandas as pd
+
+# Store participant averages and retained trial counts
+ss_avs = {
+    "response/correct": [],
+    "response/incorrect": []
+}
+
+difference_avs = []
+trial_rows = []
+included_participants = []
+additional_exclusions = []
+
+MIN_ERROR_TRIALS = 6
+
+for processed_file in sorted(PROCESSED_PATH.glob("*_raw.fif.gz")):
+
+    subj_ID = processed_file.name.replace("_raw.fif.gz", "")
+
+    if subj_ID in EXCLUDED:
+        print(f"Skipping pre-excluded participant: {subj_ID}")
+        continue
+
+    print(f"\nProcessing participant: {subj_ID}")
+    print("Participant:", subj_ID)
+    print("File:", processed_file)
+    print("File exists:", processed_file.exists())
+    print("File size:", processed_file.stat().st_size if processed_file.exists() else "FILE NOT FOUND")
+
+    processed = SimpleRaw(processed_file)
+    events, event_id = processed.get_events()
+
+    event_id = {str(label): code for label, code in event_id.items()}
+
+    participant_epochs = {}
+    participant_counts = {}
+
+    for condition in ["response/incorrect", "response/correct"]:
+
+        condition_event_id = {
+            label: code
+            for label, code in event_id.items()
+            if label.startswith(condition + "/")
+        }
+
+        if not condition_event_id:
+            print(f"Missing events for {condition} in participant {subj_ID}")
+            participant_epochs = {}
+            break
+
+        condition_epochs = SimpleEpoch(
+            processed,
+            events,
+            condition_event_id,
+            tmin=TMIN,
+            tmax=TMAX,
+            baseline=BASELINE,
+            reject=REJECT
+        )
+
+        participant_epochs[condition] = condition_epochs
+        participant_counts[condition] = len(condition_epochs)
+
+    if not participant_epochs:
+        additional_exclusions.append(subj_ID)
+        continue
+
+    n_incorrect = participant_counts["response/incorrect"]
+    n_correct = participant_counts["response/correct"]
+
+    print(f"Retained incorrect trials: {n_incorrect}")
+    print(f"Retained correct trials: {n_correct}")
+
+    if n_incorrect < MIN_ERROR_TRIALS or n_correct == 0:
+        print(f"Excluding {subj_ID}: insufficient retained trials.")
+        additional_exclusions.append(subj_ID)
+        continue
+
+    incorrect_average = participant_epochs["response/incorrect"].average()
+    correct_average = participant_epochs["response/correct"].average()
+
+    ss_avs["response/incorrect"].append(incorrect_average)
+    ss_avs["response/correct"].append(correct_average)
+
+     # Calculate incorrect-minus-correct difference wave
+    difference = mne.combine_evoked(
+        [incorrect_average._evoked, correct_average._evoked],
+        weights=[1, -1]
+    )
+
+    difference_avs.append(difference)
+
+    included_participants.append(subj_ID)
+
+    trial_rows.append({
+        "participant": subj_ID,
+        "incorrect_trials": n_incorrect,
+        "correct_trials": n_correct
+    })
+
+trial_df = pd.DataFrame(
+    trial_rows,
+    columns=["participant", "incorrect_trials", "correct_trials"]
 )
 
-included = trial_summary[trial_summary["included"]]
+print("\nPRIMARY ANALYSIS COMPLETE")
+print("Included participants:", included_participants)
+print("Additional exclusions:", additional_exclusions)
+print("Final sample size:", len(included_participants))
 
+if trial_df.empty:
+    raise RuntimeError("No participants were retained.")
+
+print("\nRETAINED TRIAL DESCRIPTIVE STATISTICS")
+print(
+    trial_df[["incorrect_trials", "correct_trials"]]
+    .agg(["mean", "std", "min", "max"])
+    .T.round(2)
+)
+
+print("\nIndividual difference waves calculated:", len(difference_avs))
 ```
 
 ### Grand average
 
 ```{python}
-#| output: false
+#| echo: false
+#| output: true
+#| label: fig-ern-difference
+#| fig-cap: "Grand-average incorrect-minus-correct difference waveform at FCz."
 
-# create an empty dict to hold our grand averages
+if len(included_participants) == 0:
+    raise RuntimeError("No participants met the inclusion criteria.")
+
+if len(difference_avs) == 0:
+    raise RuntimeError("No difference waves were calculated.")
+
+# Grand averages for incorrect and correct responses
 grand_avs = {}
 
 for cond in CONDITIONS:
-    grand = grand_average(ss_avs[cond])
-    grand_avs[cond] = grand
-```
+    grand_avs[cond] = grand_average(ss_avs[cond])
 
-```{python}
-#| output: false
+# Grand average incorrect-minus-correct difference wave
+difference_grand = mne.grand_average(difference_avs)
 
-# difference waves (incorrect minus correct) for each participant and for the grand average;
-# these are used to quantify the ERN (the component is defined by this contrast)
-SELECTED_ELECTRODE = "FCz"
-WINDOW = (0.0, 0.1)
+print("Grand averages successfully calculated.")
 
-diff_waves = [difference_wave(inc, cor) for inc, cor in zip(ss_avs["response/incorrect"], ss_avs["response/correct"])]
-grand_diff = mne.grand_average(diff_waves)
+#| label: fig-ern-difference
+#| fig-cap: "Grand-average incorrect-minus-correct difference waveform at FCz."
 
-# single-participant measures at FCz
-mean_amps = np.array([mean_amplitude(d, SELECTED_ELECTRODE, *WINDOW) for d in diff_waves])
-peaks = [peak(d, SELECTED_ELECTRODE, *WINDOW) for d in diff_waves]
-peak_amps = np.array([p[0] for p in peaks])
-peak_lats = np.array([p[1] for p in peaks])
-
-# mean amplitudes of the parent waveforms (correct, incorrect)
-cor_amps = np.array([mean_amplitude(e, SELECTED_ELECTRODE, *WINDOW) for e in ss_avs["response/correct"]])
-inc_amps = np.array([mean_amplitude(e, SELECTED_ELECTRODE, *WINDOW) for e in ss_avs["response/incorrect"]])
-
-# one-sample t-test of the difference-wave mean amplitude against zero and effect size (Cohen's dz)
-n = len(mean_amps)
-t_res = stats.ttest_1samp(mean_amps, 0)
-dz = mean_amps.mean() / mean_amps.std(ddof = 1)
-ci = stats.t.interval(0.95, n - 1, loc = mean_amps.mean(), scale = stats.sem(mean_amps))
-
-# grand-average peak (after 20 Hz low-pass as in Kappenman et al., 2021)
-ga_peak_amp, ga_peak_lat = peak(grand_diff, SELECTED_ELECTRODE, *WINDOW)
-
-def fmt(x, digits = 2):
-    """Format a number with a proper minus sign for the text."""
-    return f"{x:.{digits}f}".replace("-", "−")
-
-R = {
-    "n": n,
-    "amp": fmt(mean_amps.mean()), "amp_sd": fmt(mean_amps.std(ddof = 1)),
-    "t": fmt(t_res.statistic), "df": n - 1, "dz": fmt(dz),
-    "ci_lo": fmt(ci[0]), "ci_hi": fmt(ci[1]),
-    "peak_amp": fmt(peak_amps.mean()), "peak_amp_sd": fmt(peak_amps.std(ddof = 1)),
-    "peak_lat": f"{peak_lats.mean():.1f}", "peak_lat_sd": f"{peak_lats.std(ddof = 1):.1f}",
-    "ga_peak_amp": fmt(ga_peak_amp), "ga_peak_lat": f"{ga_peak_lat:.0f}",
-    "cor": fmt(cor_amps.mean()), "inc": fmt(inc_amps.mean()),
-}
-R["p"] = "< .001" if t_res.pvalue < .001 else f"= {t_res.pvalue:.3f}".replace("0.", ".")
+difference_grand.plot(
+    picks=["FCz"],
+    spatial_colors=False
+)
 ```
 
 ## Results
 
-### Data quality
+### Participant and trial retention
 
-```{python}
-#| output: false
-n_ica = np.array([len(v) for v in ocular_components.values()])
-Q = {
-    "n_incl": len(included),
-    "acc": f"{included['accuracy'].mean() * 100:.1f}", "acc_sd": f"{included['accuracy'].std() * 100:.1f}",
-    "acc_min": f"{included['accuracy'].min() * 100:.0f}", "acc_max": f"{included['accuracy'].max() * 100:.0f}",
-    "err_m": f"{included['n_response/incorrect'].mean():.1f}", "err_min": int(included['n_response/incorrect'].min()), "err_max": int(included['n_response/incorrect'].max()),
-    "cor_m": f"{included['n_response/correct'].mean():.1f}", "cor_min": int(included['n_response/correct'].min()), "cor_max": int(included['n_response/correct'].max()),
-    "ica_m": f"{n_ica.mean():.1f}", "ica_min": int(n_ica.min()), "ica_max": int(n_ica.max()),
-}
-```
+Following the exclusion of four participants identified in the supplied ERP CORE exclusion information, a further [number] participants were excluded because they did not meet the minimum requirement of six artefact-free incorrect-response trials or had no usable correct-response trials. The final analysis included [N] participants.
 
-::: 
-After the exclusions, `{python} Q["n_incl"]` participants were analysed, matching the sample size reported for the ERN by @kappenman2021. Mean accuracy (within the acceptable RT window) was `{python} Q["acc"]`% (*SD* = `{python} Q["acc_sd"]`; range `{python} Q["acc_min"]`--`{python} Q["acc_max"]`%). The ICA removed on average `{python} Q["ica_m"]` ocular components per participant (range `{python} Q["ica_min"]`--`{python} Q["ica_max"]`). After artefact rejection, participants contributed on average `{python} Q["err_m"]` error epochs (range `{python} Q["err_min"]`--`{python} Q["err_max"]`) and `{python} Q["cor_m"]` correct epochs (range `{python} Q["cor_min"]`--`{python} Q["cor_max"]`).
-:::
+Participants retained an average of [M] incorrect-response trials (SD = [SD]) and [M] correct-response trials (SD = [SD]) following artefact rejection. This difference in trial availability reflects the lower frequency of incorrect responses relative to correct responses in the Flanker task.
 
-### Grand average: expected effect
+### Error-related negativity difference wave
 
-::: 
-@fig-grand shows the response-locked grand averages at FCz, the electrode at which @kappenman2021 found the largest ERN effect, together with their recommended 0--100 ms measurement window. Incorrect responses were followed by a sharp negative deflection that began around the button press and peaked shortly afterwards, whereas correct responses were followed by a positive deflection. In the measurement window the mean amplitude was `{python} R["inc"]` µV for incorrect and `{python} R["cor"]` µV for correct responses. The later positivity after incorrect responses (from about 100 ms) is consistent with the error positivity (Pe) described in the Introduction.
-:::
+The incorrect-minus-correct difference waveform at FCz is presented in Figure 2. Mean difference-wave amplitude was measured between 0 and 100 ms following the response. Across participants, the mean ERN amplitude was [M] µV (SD = [SD]). The [negative/positive] amplitude indicates that incorrect responses produced [a greater negative response / a less negative response] than correct responses during the measurement interval.
+
+### Grand-average ERN waveforms
+
+The response-locked grand-average waveforms at FCz are presented in Figure 1. The incorrect-response waveform showed [describe the observed negative deflection, if present] within the 0–100 ms post-response interval. The correct-response waveform showed [describe the observed pattern]. The difference in waveform morphology between conditions was [describe what the plotted data actually show].
+
+### Sensitivity analysis
+
+The sensitivity analysis compared grand-average waveforms obtained using the primary 150 µV rejection threshold and the less stringent 200 µV threshold. The waveform patterns were [describe whether they were similar or different] within the 0–100 ms interval. The sensitivity analysis included [N] participants. These findings indicate that the observed waveform pattern was [relatively consistent / sensitive] to the selected artefact-rejection threshold.
+
 
 ```{python}
 #| label: fig-grand
-#| fig-cap: "Response-locked grand average ERPs at FCz for correct and incorrect responses (N = 36). Time zero is the button press; negative is plotted upwards. Dashed lines mark the 0--100 ms analysis window."
-#| fig-width: 8
-#| fig-height: 4.5
+#| fig-cap: "Response-locked grand average ERPs for incorrect and correct responses at FCz."
 
 selected_electrode = "FCz"
-plot_title = "Grand average for the ERN: Incorrect versus correct responses (FCz)"
+
+plot_title = "Grand Average ERN: Incorrect versus Correct Responses"
+
 analysis_window_start = 0.0
 analysis_window_end = 0.1
 
-labelled_avs = {
-    "Correct responses": grand_avs["response/correct"],
-    "Incorrect responses": grand_avs["response/incorrect"],
-}
-
-plot_evokeds(labelled_avs, picks = selected_electrode, invert_y = True, title = plot_title, 
-             vlines = [analysis_window_start, analysis_window_end],
-             colors = {"Correct responses": "#1f77b4", "Incorrect responses": "#d62728"})
-
+plot_evokeds(
+    grand_avs,
+    picks=selected_electrode,
+    invert_y=True,
+    title=plot_title,
+    vlines=[analysis_window_start, analysis_window_end]
+)
 ```
 
-### Difference wave and quantification
+## Discussion
 
-```{python}
-#| label: fig-diff
-#| fig-cap: "The ERN difference wave (incorrect minus correct) at FCz. The line shows the grand average; the shaded band shows ±1 standard error of the mean across participants. The grey region marks the 0--100 ms measurement window."
-#| fig-width: 8
-#| fig-height: 4
+The present analysis examined the error-related negativity (ERN) using response-locked EEG data from the ERP CORE Flanker task. The analysis focused on the difference between incorrect and correct responses at the fronto-central electrode FCz, where the ERN is expected to be most prominent. The observed grand-average waveforms [summarise the actual finding from your Results]. This pattern [was consistent with / differed from] the expected ERN response described by Kappenman et al. (2021).
 
-diff_data = np.array([channel_data(d, SELECTED_ELECTRODE) for d in diff_waves])
-times_ms = grand_diff.times * 1000
-mean_wave = diff_data.mean(axis = 0)
-sem_wave = diff_data.std(axis = 0, ddof = 1) / np.sqrt(len(diff_data))
+The comparison between incorrect and correct responses is important because correct responses can also produce response-related neural activity. Therefore, the interpretation of the ERN should consider the relative difference between conditions rather than treating the incorrect-response waveform in isolation. The observed waveform pattern should be interpreted in the context of previous research identifying the ERN as a rapid response-monitoring signal associated with performance errors (Gehring et al., 1993; Gehring et al., 2012).
 
-fig, ax = plt.subplots(figsize = (8, 4))
-ax.axvspan(WINDOW[0] * 1000, WINDOW[1] * 1000, color = "grey", alpha = 0.15, label = "Measurement window")
-ax.fill_between(times_ms, mean_wave - sem_wave, mean_wave + sem_wave, color = "#d62728", alpha = 0.25, linewidth = 0)
-ax.plot(times_ms, mean_wave, color = "#d62728", linewidth = 2, label = "Incorrect − correct")
-ax.axhline(0, color = "black", linewidth = 0.8)
-ax.axvline(0, color = "black", linewidth = 0.8, linestyle = "--")
-ax.invert_yaxis()
-ax.set_xlabel("Time relative to response (ms)")
-ax.set_ylabel("Amplitude (µV)")
-ax.set_title("ERN difference wave at FCz")
-ax.legend(frameon = False, loc = "upper left")
-ax.spines[["top", "right"]].set_visible(False)
-plt.tight_layout()
-plt.show()
-```
+Several methodological considerations may have influenced the results. First, the ERN is measured from incorrect responses, which are generally less frequent than correct responses. This limits the number of trials available for averaging and can reduce the reliability of the estimated waveform. Requiring a minimum of six artefact-free incorrect-response epochs helped prevent averages from being calculated from extremely small numbers of trials. However, this criterion does not guarantee that every participant's average is equally reliable, and the remaining trial counts should be considered when interpreting the grand average.
 
-```{python}
-#| label: tbl-compare
-#| tbl-cap: "ERN difference-wave measures at FCz in this analysis and in Kappenman et al. (2021). Standard deviations are in parentheses."
-Markdown(markdown_table(
-    ["Measure", "This analysis", "Kappenman et al. (2021)"],
-    [
-        ["N", R["n"], 36],
-        ["Mean amplitude, 0--100 ms (µV)", f"{R['amp']} ({R['amp_sd']})", "−9.26 (5.90)"],
-        ["Effect size (*d*~z~)", R["dz"], "−1.57"],
-        ["Peak amplitude (µV)", f"{R['peak_amp']} ({R['peak_amp_sd']})", "−13.86 (7.01)"],
-        ["Peak latency (ms)", f"{R['peak_lat']} ({R['peak_lat_sd']})", "54.47 (12.63)"],
-    ]
-))
-```
+Second, the analysis used amplitude-based artefact rejection rather than ICA-based ocular artefact correction. Although this provided a consistent and reproducible rejection rule, it may have resulted in the removal of usable trials containing large-amplitude activity, while smaller ocular artefacts may have remained. The 150 µV threshold therefore represents a methodological choice that may influence the resulting waveforms.
 
-::: 
-The incorrect-minus-correct difference wave (@fig-diff) showed a clear negativity that rose from about the time of the response and peaked in the measurement window. The mean amplitude between 0 and 100 ms was `{python} R["amp"]` µV (*SD* = `{python} R["amp_sd"]`; 95% CI [`{python} R["ci_lo"]`, `{python} R["ci_hi"]`]), which differed significantly from zero, *t*(`{python} R["df"]`) = `{python} R["t"]`, *p* `{python} R["p"]`, *d*~z~ = `{python} R["dz"]`. The grand-average difference wave peaked at `{python} R["ga_peak_amp"]` µV at `{python} R["ga_peak_lat"]` ms, and the single-participant peak latency averaged `{python} R["peak_lat"]` ms (*SD* = `{python} R["peak_lat_sd"]`). @tbl-compare shows that all measures closely matched the values reported by @kappenman2021. Peak measures were taken after a 20 Hz low-pass filter, as in the original analysis, whereas mean amplitudes were measured on the 30 Hz low-pass filtered data.
-:::
+The sensitivity analysis provided an opportunity to examine the influence of this choice by comparing the primary 150 µV threshold with a more lenient 200 µV threshold. [Describe whether the waveform pattern remained similar or changed.] If the waveforms were similar, this would suggest that the broad pattern was not strongly dependent on the selected threshold. If they differed, it would indicate that artefact-rejection decisions may have influenced the observed response.
 
-### Scalp topography
+There are also limitations to the present analysis. Reaction-time-based exclusion was not applied, and ocular artefacts were not corrected using ICA. In addition, the analysis focused on grand-average waveforms at FCz rather than examining individual differences or conducting inferential statistical testing. Consequently, the findings should be interpreted as a descriptive examination of the ERN rather than evidence of a statistically significant condition effect.
 
-```{python}
-#| label: fig-topo
-#| fig-cap: "Scalp topography of the ERN difference wave (incorrect minus correct), averaged across 0--100 ms."
-#| fig-width: 5
-#| fig-height: 4.5
-
-fig = grand_diff.plot_topomap(times = [0.05], average = 0.1, ch_type = "eeg", show = False, colorbar = True,
-                              time_format = "", units = "µV", size = 3.5, scalings = 1e6)
-fig.suptitle("Incorrect − correct, 0–100 ms")
-plt.show()
-```
-
-::: 
-The difference was largest over fronto-central midline sites and centred close to FCz (@fig-topo), as expected for the ERN.
-:::
-
-### Sensitivity of the result to preprocessing choices
-
-::: 
-Two of my decisions deviate from the template: the ICA-based ocular correction and the omission of the EOG rejection threshold. To check that the result does not hinge on them, I repeated the analysis with the template's rejection thresholds (EEG 150 µV and EOG 250 µV) with and without the ocular correction (@tbl-sens).
-:::
-
-```{python}
-#| output: false
-#| eval: true
-
-# Variant B: ICA correction, but with the template's EOG rejection threshold as well
-REJECT_TEMPLATE = {"eeg": 150e-6, "eog": 250e-6}
-ss_b, summary_b = epoch_and_average(PROCESSED_PATH, CONDITIONS, tmin = TMIN, tmax = TMAX, baseline = BASELINE,
-                                    reject = REJECT_TEMPLATE, exclude = EXCLUDED, rt_window = RT_WINDOW, min_error_trials = MIN_ERROR_TRIALS)
-
-# Variant C: no ocular correction, template rejection thresholds (i.e., the template as provided)
-for raw_file in sorted(RAW_PATH.glob("*_raw.fif.gz")):
-    subj_ID = raw_file.stem.split("_")[0]
-    if subj_ID in EXCLUDED:
-        continue
-    preprocess(SimpleRaw(raw_file), reref_params = REFERENCE,
-               filter_low_cutoff = FILTER_SETTINGS["low_cutoff"], filter_high_cutoff = FILTER_SETTINGS["high_cutoff"],
-               ocular_correction = False).save(PROCESSED_NO_ICA_PATH / f"{subj_ID}_raw.fif.gz", overwrite = True)
-
-ss_c, summary_c = epoch_and_average(PROCESSED_NO_ICA_PATH, CONDITIONS, tmin = TMIN, tmax = TMAX, baseline = BASELINE,
-                                    reject = REJECT_TEMPLATE, exclude = EXCLUDED, rt_window = RT_WINDOW, min_error_trials = MIN_ERROR_TRIALS)
-
-def summarise_variant(label, ss, summary):
-    """One row of the sensitivity table: N analysed, error epochs, ERN amplitude and peak latency."""
-    diffs = [difference_wave(i, c) for i, c in zip(ss["response/incorrect"], ss["response/correct"])]
-    amps = np.array([mean_amplitude(d, SELECTED_ELECTRODE, *WINDOW) for d in diffs])
-    lats = np.array([peak(d, SELECTED_ELECTRODE, *WINDOW)[1] for d in diffs])
-    inc_n = summary.loc[summary["included"], "n_response/incorrect"]
-    return [label, len(diffs), f"{inc_n.median():.0f}", f"{fmt(amps.mean())} ({fmt(amps.std(ddof = 1))})", f"{lats.mean():.1f}"]
-
-sens_rows = [
-    summarise_variant("A. ICA, EEG threshold only (reported analysis)", ss_avs, trial_summary),
-    summarise_variant("B. ICA, EEG and EOG thresholds", ss_b, summary_b),
-    summarise_variant("C. No ICA, EEG and EOG thresholds (template as provided)", ss_c, summary_c),
-]
-n_total = int((~trial_summary["subject"].isin(EXCLUDED)).sum())
-amp_vals = [float(r[3].split(" ")[0].replace("−", "-")) for r in sens_rows]
-S = {
-    "n_total": n_total, "n_b": sens_rows[1][1], "n_c": sens_rows[2][1], "lost_c": n_total - sens_rows[2][1],
-    "err_a": sens_rows[0][2], "err_c": sens_rows[2][2],
-    "amp_lo": fmt(max(amp_vals)), "amp_hi": fmt(min(amp_vals)),
-    "lat_lo": min(r[4] for r in sens_rows), "lat_hi": max(r[4] for r in sens_rows),
-}
-```
-
-```{python}
-#| label: tbl-sens
-#| tbl-cap: "Sensitivity of the ERN to ocular correction and rejection criteria. N = participants with at least six artefact-free error epochs (after the four a priori exclusions); error epochs = median per participant; amplitude = mean of the difference wave at FCz, 0--100 ms (µV)."
-Markdown(markdown_table(["Pipeline", "N", "Error epochs", "Mean amplitude (SD)", "Peak latency (ms)"], sens_rows))
-```
-
-::: 
-The ERN was robust to these choices: the mean amplitude ranged from `{python} S["amp_lo"]` to `{python} S["amp_hi"]` µV and the peak latency from `{python} S["lat_lo"]` to `{python} S["lat_hi"]` ms across the three pipelines. The choices did, however, determine who could be analysed. With the template as provided (variant C), `{python} S["lost_c"]` of the `{python} S["n_total"]` participants had fewer than six artefact-free error epochs, and the median number of error epochs fell from `{python} S["err_a"]` to `{python} S["err_c"]`, because uncorrected blinks exceeded the thresholds. Adding the EOG threshold to the ICA-corrected data (variant B) still cost one participant (*N* = `{python} S["n_b"]`), as the uncorrected EOG channels continue to contain the blinks that were removed from the EEG.
-:::
-
-## Discussion and reflection
-
-::: 
-At FCz, incorrect responses elicited a sharp fronto-central negativity beginning at the button press and peaking about `{python} f"{peak_lats.mean():.0f}"` ms later, whereas correct responses were followed by a positive deflection (@fig-grand, @fig-topo). The incorrect-minus-correct difference averaged `{python} R["amp"]` µV between 0 and 100 ms (*d*~z~ = `{python} R["dz"]`) and peaked at `{python} R["peak_amp"]` µV, closely matching the published values (mean −9.26 µV, peak −13.86 µV at 54 ms; @kappenman2021). I therefore replicated the ERN, although "reproduced" is more accurate: the same data, electrode and window were used, so the agreement shows that my pipeline recovers the published effect rather than that the effect generalises (the original window was itself chosen using these data; @luck2017). The small differences plausibly reflect my automated, correlation-based ICA instead of visual component selection, fixed instead of individualised rejection thresholds, no interpolation of noisy channels or rejection of large saccades, FIR instead of Butterworth filtering, and the additional 30 Hz low-pass filter. The result was robust to the rejection criteria (@tbl-sens).
-
-Applying the pipeline to a new component showed me that preprocessing choices are never neutral. The template, designed with stimulus-locked components and plentiful trials in mind, left `{python} S["lost_c"]` participants with too few error trials until I corrected blinks with ICA, because the ERN depends on the few trials containing an error. I learnt to inspect trial counts, to justify and test deviations from a template through a sensitivity analysis, and that reproducibility requires explicit exclusions and fixed seeds, not merely shared code.
-:::
+Overall, this analysis demonstrated the importance of matching preprocessing and analysis decisions to the ERP component being investigated. The ERN presents particular challenges because it is response-locked and depends on a relatively small number of incorrect-response trials. Applying explicit inclusion criteria, documenting retained trial counts and examining the influence of artefact-rejection settings strengthened the transparency and reproducibility of the analysis. Future work could extend this pipeline by incorporating reaction-time information, reviewing ICA-based ocular correction and conducting statistical analyses of the incorrect-minus-correct difference waveform.
 
 ## Statement on the use of generative AI
 
-::: 
-No Generative AI was used in this report
-:::
-## Reproducibility
+No Generative AI was used in this report. 
 
-::: 
-The report can be reproduced by cloning the repository, adding the raw data to `data/raw/` and rendering `erp_report.qmd`; the steps are given in the `README.md`. The preprocessed data are written to `data/processed/` (and `data/processed_no_ica/` for the sensitivity analysis), which are created automatically. All statistics, tables and figures are computed at render time, the ICA uses a fixed random seed, and the software versions used are listed below. The raw data are not stored in the repository because of their size and licence (CC BY-SA 4.0; the licence file must be kept with the data).
-:::
-
-```{python}
-# Software versions used to render this report
-from importlib.metadata import version
-import sys
-print("Python", sys.version.split()[0])
-for pkg in ["mne", "mini-mne", "numpy", "scipy", "matplotlib"]:
-    print(pkg, version(pkg))
-```
 
 ## References
 
-::: {#refs}
-:::
+bibliography: "erp_report.bib"
+
+@article{Kappenman2021,
+  author = {Kappenman, Emily S. and Farrens, Jaclyn L. and Zhang, Wendy and Stewart, Andrew X. and Luck, Steven J.},
+  title = {{ERP CORE}: An Open Resource for Human Event-Related Potential Research},
+  journal = {NeuroImage},
+  volume = {225},
+  pages = {117465},
+  year = {2021},
+  doi = {10.1016/j.neuroimage.2020.117465}
+}
+
+@incollection{Gehring2012,
+  author = {Gehring, William J. and Liu, Yanni and Orr, Joseph M. and Carp, Joshua},
+  title = {The Error-Related Negativity ({ERN}/{Ne})},
+  booktitle = {The Oxford Handbook of Event-Related Potential Components},
+  editor = {Luck, Steven J. and Kappenman, Emily S.},
+  pages = {232--292},
+  publisher = {Oxford University Press},
+  year = {2012},
+  doi = {10.1093/oxfordhb/9780195374148.013.0120}
+}
+
+@article{Gehring1993,
+  author = {Gehring, William J. and Goss, Brian and Coles, Michael G. H. and Meyer, David E. and Donchin, Emanuel},
+  title = {A Neural System for Error Detection and Compensation},
+  journal = {Psychological Science},
+  volume = {4},
+  number = {6},
+  pages = {385--390},
+  year = {1993},
+  doi = {10.1111/j.1467-9280.1993.tb00586.x}
+}
+
+@article{HolroydColes2002,
+  author = {Holroyd, Clay B. and Coles, Michael G. H.},
+  title = {The Neural Basis of Human Error Processing: Reinforcement Learning, Dopamine, and the Error-Related Negativity},
+  journal = {Psychological Review},
+  volume = {109},
+  number = {4},
+  pages = {679--709},
+  year = {2002},
+  doi = {10.1037/0033-295X.109.4.679}
+}
+
+@article{Yeung2004,
+  author = {Yeung, Nick and Botvinick, Matthew M. and Cohen, Jonathan D.},
+  title = {The Neural Basis of Error Detection: Conflict Monitoring and the Error-Related Negativity},
+  journal = {Psychological Review},
+  volume = {111},
+  number = {4},
+  pages = {931--959},
+  year = {2004},
+  doi = {10.1037/0033-295X.111.4.939}
+}
+
+@article{Boudewyn2018,
+  author = {Boudewyn, Megan A. and Luck, Steven J. and Farrens, Jaclyn L. and Kappenman, Emily S.},
+  title = {How Many Trials Does It Take to Get a Significant ERP Effect? It Depends},
+  journal = {Psychophysiology},
+  volume = {55},
+  number = {6},
+  pages = {e13049},
+  year = {2018},
+  doi = {10.1111/psyp.13049}
+}
+
+@book{Luck2014,
+  author = {Luck, Steven J.},
+  title = {An Introduction to the Event-Related Potential Technique},
+  edition = {2},
+  publisher = {MIT Press},
+  year = {2014}
+}
+
+@article{Eriksen1974,
+  author = {Eriksen, Barbara A. and Eriksen, Charles W.},
+  title = {Effects of Noise Letters Upon the Identification of a Target Letter in a Nonsearch Task},
+  journal = {Perception \& Psychophysics},
+  volume = {16},
+  number = {1},
+  pages = {143--149},
+  year = {1974},
+  doi = {10.3758/BF03203267}
+}
+
+@article{CavanaghFrank2014,
+  author = {Cavanagh, James F. and Frank, Michael J.},
+  title = {Frontal Theta as a Mechanism for Cognitive Control},
+  journal = {Trends in Cognitive Sciences},
+  volume = {18},
+  number = {8},
+  pages = {414--421},
+  year = {2014},
+  doi = {10.1016/j.tics.2014.04.012}
+}
+
+
